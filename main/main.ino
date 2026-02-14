@@ -2,8 +2,9 @@
 #include <SparkFun_TB6612.h>
 
 
-#define POCET_SEGMENTU_CYKLU 100
+#define POCET_SEGMENTU_CYKLU 300
 #define HALL_ZMENA_LIMIT 70
+#define OTACKY_NA_CYKLUS 3.0 // pocet otacek osy potreba k udelani jednoho celeho cyklu
 
 #define MOTOR_STBY 6
 #define MOTOR_AIN1 7
@@ -12,24 +13,28 @@
 
 #define HALL_PIN A3
 
-#define LED_MODRA_PIN 2
-#define LED_ZLUTA_PIN 3
-#define LED_CERVENA_PIN 4
-#define LED_BILA_PIN 5
-
-
-#define MOTOR_ZUBY 11.0                                         // pocet zubu na kole motoru
-#define OSA_ZUBY 40.0                                           // pocet zubu na kole osy
-#define OSA_MOTOR_POMER (OSA_ZUBY / MOTOR_ZUBY)                 // pocet otacek motoru potreba k jedne otacce osy
-#define CYKLUS_OSA_POMER 3.0                                    // pocet otacek osy potreba k udelani jednoho celeho cyklu
-#define CYKLUS_MOTOR_POMER (OSA_MOTOR_POMER * CYKLUS_OSA_POMER) // pocet otacek motoru potreba k udelani jednoho celeho cyklu
+#define LED_MODRA_PIN 3
+#define LED_ZLUTA_PIN 4
+#define LED_CERVENA_PIN 5
+#define LED_BILA_PIN 2
 
 
 //Motor motor = Motor(MOTOR_AIN1, MOTOR_AIN2, MOTOR_PWMA, 1, MOTOR_STBY);
-LedRozmezi modraLedka = LedRozmezi(LED_MODRA_PIN, 10, 20, "modra");
-LedRozmezi zlutaLedka = LedRozmezi(LED_ZLUTA_PIN, 30, 40, "zluta");
-LedRozmezi cervenaLedka = LedRozmezi(LED_CERVENA_PIN, 50, 60, "cervena");
-LedRozmezi bilaLedka = LedRozmezi(LED_BILA_PIN, 60, 80, "bila");
+LedRozmezi modraLedka = LedRozmezi(LED_MODRA_PIN, 20, 90, "modra");
+LedRozmezi zlutaLedka = LedRozmezi(LED_ZLUTA_PIN, 100, 145, "zluta");
+LedRozmezi cervenaLedka = LedRozmezi(LED_CERVENA_PIN, 145, 190, "cervena");
+LedRozmezi bilaLedka = LedRozmezi(LED_BILA_PIN, 200, 280, "bila");
+
+
+unsigned long cas_minule_otacky = 0;     // jak dlouho trvala posledni otacka
+unsigned long cas_minuleho_segmentu = 0; // cas kdy se preslo do minuleho segmentu
+double us_na_segment = 0xFFFFFFFF;       // prumerny cas jak dlouho trva jeden segment
+
+int otacka_osy = 0;         // pocitadlo otacek osy. 3 otacky = 1 cyklus motoru
+int minula_otacka_osy = 0;  // minuly stav pocitadla otacek osy
+
+bool magnet_blizko = false; // bool pro "vypinani" kdy se reaguje na pozici magnetu
+int segment = 0;            // pocitadlo kde se nachazime ve "virtualnim" poli
 
 
 int rozdil(int hodnota1, int hodnota2) {
@@ -47,20 +52,13 @@ void setup() {
   Serial.println("START");
 
   digitalWrite(MOTOR_STBY, HIGH);
-  digitalWrite(MOTOR_AIN1, HIGH);
-  digitalWrite(MOTOR_AIN2, LOW);
+  digitalWrite(MOTOR_AIN1, LOW);
+  digitalWrite(MOTOR_AIN2, HIGH);
   analogWrite(MOTOR_PWMA, 255);
 }
 
-
-bool magnet_blizko = false;
-int segment = 0;
-unsigned long minula_otacka = 0;
-unsigned long ms_na_segment = 65535;
-unsigned long minuly_cas_dilu = 0;
-
 void loop() {
-  unsigned long ted = millis();
+  unsigned long ted = micros(); // cas teto smycky
 
   // senzor vraci linearni napeti
   // kdyz nic neni u senzoru, vraci +- polovinu mezi 0 - 5V
@@ -77,29 +75,59 @@ void loop() {
   else if (hall_zmena>= HALL_ZMENA_LIMIT && !magnet_blizko) {
     magnet_blizko = true;
 
-    unsigned long ms_na_otacku = ted - minula_otacka;
-    minula_otacka = ted;
-    ms_na_segment = (ms_na_otacku * CYKLUS_MOTOR_POMER) / POCET_SEGMENTU_CYKLU;
+    // pocitadlo otacek osy vzhledem k cyklu
+    otacka_osy++;
+    if (otacka_osy == 3) {
+      otacka_osy = 0;
+    }
+
+    unsigned long us_na_otacku = ted - cas_minule_otacky;                     // vypocet casu v us ktery jak dlouho trva jedna otacka
+    cas_minule_otacky = ted;                                                  // ulozeni casu posledni otacky
+    us_na_segment = (us_na_otacku * OTACKY_NA_CYKLUS) / POCET_SEGMENTU_CYKLU; // vypocet jak dlouho bude zhruba trvat jeden segment v us
 
     Serial.print("Cas cyklu: ");
-    Serial.println(ms_na_otacku * CYKLUS_MOTOR_POMER);
-    Serial.print("Cas na dil: ");
-    Serial.println(ms_na_segment);
+    Serial.print(us_na_otacku * OTACKY_NA_CYKLUS / 1000);
+    Serial.println("ms");
+    Serial.print("Cas otacky: ");
+    Serial.print(us_na_otacku / 1000);
+    Serial.println("ms");
+    Serial.print("Cas na segment: ");
+    Serial.print(us_na_segment / 1000);
+    Serial.println("ms");
   }
 
-  // ubehl cas sehmentu -> posun se na dalsi
-  if (ted - minuly_cas_dilu >= ms_na_segment) {
-    minuly_cas_dilu = ted;
+  // nedelej nic dokud se nevypocte prvni otacka
+  if (cas_minule_otacky == 0) {
+    return;
+  }
+
+  // ubehl cas segmentu -> posun se na dalsi
+  if (ted - cas_minuleho_segmentu >= us_na_segment) {
+    cas_minuleho_segmentu += us_na_segment;
     segment++;
   }
 
+  // synchronizace segmentu kazdou otacku
+  if (otacka_osy != minula_otacka_osy) {
+    minula_otacka_osy = otacka_osy;
+    //int wanted = POCET_SEGMENTU_CYKLU / OTACKY_NA_CYKLUS * otacka_osy;
+    //if (wanted != segment) {
+    //  Serial.print("sync ");
+    //  Serial.print(wanted);
+    //  Serial.print(" ");
+    //  Serial.println(segment);
+    //}
+    segment = POCET_SEGMENTU_CYKLU / OTACKY_NA_CYKLUS * otacka_osy;
+  }
+
+  // vyresetovani pocitadla segmentu
+  if (segment >= POCET_SEGMENTU_CYKLU) {
+    segment = 0;
+  }
+
+  // vsem LED se preda nynejsi segment a podle toho se rozsviti nebo zhasnou
   modraLedka.blikKontrola(segment);
   cervenaLedka.blikKontrola(segment);
   zlutaLedka.blikKontrola(segment);
   bilaLedka.blikKontrola(segment);
-
-  // vyresetuj segment kdyz jsme na konci
-  if (segment > POCET_SEGMENTU_CYKLU) {
-    segment = 0;
-  }
 }

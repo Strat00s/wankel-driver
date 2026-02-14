@@ -26,14 +26,14 @@ public:
 
     // vypis zmenu
     if (svitila != sviti) {
-      Serial.print(i);
-      Serial.print(" ");
-      Serial.print(jmeno);
+      //Serial.print(i);
+      //Serial.print(" ");
+      //Serial.print(jmeno);
       if (sviti) {
-        Serial.println(" on");
+        //Serial.println(" on");
       }
       else {
-        Serial.println(" off");
+        //Serial.println(" off");
       }
     }
     return sviti;
