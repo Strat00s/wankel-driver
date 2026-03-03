@@ -23,19 +23,6 @@ public:
       sviti = false;
       digitalWrite(pin, LOW);
     }
-
-    // vypis zmenu
-    if (svitila != sviti) {
-      //Serial.print(i);
-      //Serial.print(" ");
-      //Serial.print(jmeno);
-      if (sviti) {
-        //Serial.println(" on");
-      }
-      else {
-        //Serial.println(" off");
-      }
-    }
     return sviti;
   }
 };

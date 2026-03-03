@@ -1,5 +1,5 @@
 #include "LedRozmezi.hpp"
-#include <SparkFun_TB6612.h>
+//#include <SparkFun_TB6612.h>
 
 
 #define POCET_SEGMENTU_CYKLU 300
@@ -14,16 +14,16 @@
 #define HALL_PIN A3
 
 #define LED_MODRA_PIN 3
-#define LED_ZLUTA_PIN 4
-#define LED_CERVENA_PIN 5
+#define LED_ZLUTA_PIN 5
+#define LED_CERVENA_PIN 4
 #define LED_BILA_PIN 2
 
+#define OFFSET 30
 
-//Motor motor = Motor(MOTOR_AIN1, MOTOR_AIN2, MOTOR_PWMA, 1, MOTOR_STBY);
-LedRozmezi modraLedka = LedRozmezi(LED_MODRA_PIN, 20, 90, "modra");
-LedRozmezi zlutaLedka = LedRozmezi(LED_ZLUTA_PIN, 100, 145, "zluta");
-LedRozmezi cervenaLedka = LedRozmezi(LED_CERVENA_PIN, 145, 190, "cervena");
-LedRozmezi bilaLedka = LedRozmezi(LED_BILA_PIN, 200, 280, "bila");
+LedRozmezi modraLedka   = LedRozmezi(LED_MODRA_PIN,   0, 60, "modra");
+LedRozmezi zlutaLedka   = LedRozmezi(LED_ZLUTA_PIN,   80, 140, "zluta");
+LedRozmezi cervenaLedka = LedRozmezi(LED_CERVENA_PIN, 150, 200, "cervena");
+LedRozmezi bilaLedka    = LedRozmezi(LED_BILA_PIN,    220, 300, "bila");
 
 
 unsigned long cas_minule_otacky = 0;     // jak dlouho trvala posledni otacka
@@ -54,7 +54,7 @@ void setup() {
   digitalWrite(MOTOR_STBY, HIGH);
   digitalWrite(MOTOR_AIN1, LOW);
   digitalWrite(MOTOR_AIN2, HIGH);
-  analogWrite(MOTOR_PWMA, 255);
+  analogWrite(MOTOR_PWMA, 100);
 }
 
 void loop() {
@@ -96,11 +96,6 @@ void loop() {
     Serial.println("ms");
   }
 
-  // nedelej nic dokud se nevypocte prvni otacka
-  if (cas_minule_otacky == 0) {
-    return;
-  }
-
   // ubehl cas segmentu -> posun se na dalsi
   if (ted - cas_minuleho_segmentu >= us_na_segment) {
     cas_minuleho_segmentu += us_na_segment;
@@ -125,9 +120,11 @@ void loop() {
     segment = 0;
   }
 
+  int offset_segment = (segment + OFFSET) % POCET_SEGMENTU_CYKLU;
+
   // vsem LED se preda nynejsi segment a podle toho se rozsviti nebo zhasnou
-  modraLedka.blikKontrola(segment);
-  cervenaLedka.blikKontrola(segment);
-  zlutaLedka.blikKontrola(segment);
-  bilaLedka.blikKontrola(segment);
+  modraLedka.blikKontrola(offset_segment);
+  cervenaLedka.blikKontrola(offset_segment);
+  zlutaLedka.blikKontrola(offset_segment);
+  bilaLedka.blikKontrola(offset_segment);
 }
