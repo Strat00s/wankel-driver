@@ -1,30 +1,43 @@
 #include "LedRozmezi.hpp"
 //#include <SparkFun_TB6612.h>
 
-
+// definice hodnot ohledne cyklu
 #define POCET_SEGMENTU_CYKLU 300
 #define HALL_ZMENA_LIMIT 70
 #define OTACKY_NA_CYKLUS 3.0 // pocet otacek osy potreba k udelani jednoho celeho cyklu
 
+// definice pinu pro ovladani motoru
 #define MOTOR_STBY 6
 #define MOTOR_AIN1 7
 #define MOTOR_AIN2 8
 #define MOTOR_PWMA 9
 
+// definice pinu pro hall senzor
 #define HALL_PIN A3
 
+// definice pinu pro tlacitka
+#define ADD_PIN A1
+#define SUB_PIN A2
+
+// definice pinu pro ledky
 #define LED_MODRA_PIN 3
 #define LED_ZLUTA_PIN 5
 #define LED_CERVENA_PIN 4
 #define LED_BILA_PIN 2
 
-#define OFFSET 30
+// offset pozice motoru vuci zacaktu segmenut (v poctu segmentu)
+#define OFFSET 80
+// prodleva cteni tlacitek v us
+#define CAS_CTENI_TLACITEK (10 * 1000)
 
-LedRozmezi modraLedka   = LedRozmezi(LED_MODRA_PIN,   0, 60, "modra");
-LedRozmezi zlutaLedka   = LedRozmezi(LED_ZLUTA_PIN,   80, 140, "zluta");
+
+LedRozmezi modraLedka   = LedRozmezi(LED_MODRA_PIN,   5, 70, "modra");
+LedRozmezi zlutaLedka   = LedRozmezi(LED_ZLUTA_PIN,   90, 145, "zluta");
 LedRozmezi cervenaLedka = LedRozmezi(LED_CERVENA_PIN, 150, 200, "cervena");
 LedRozmezi bilaLedka    = LedRozmezi(LED_BILA_PIN,    220, 300, "bila");
 
+uint8_t rychlost = 125; // vychozi rychlost motoru (od 0 - 255)
+unsigned long cas_minuleho_cteni = 0;
 
 unsigned long cas_minule_otacky = 0;     // jak dlouho trvala posledni otacka
 unsigned long cas_minuleho_segmentu = 0; // cas kdy se preslo do minuleho segmentu
@@ -48,17 +61,47 @@ void setup() {
   pinMode(MOTOR_AIN1, OUTPUT);
   pinMode(MOTOR_AIN2, OUTPUT);
   pinMode(MOTOR_STBY, OUTPUT);
+  pinMode(MOTOR_PWMA, OUTPUT);
+  pinMode(ADD_PIN, INPUT_PULLUP);
+  pinMode(SUB_PIN, INPUT_PULLUP);
+
   Serial.begin(115200);
   Serial.println("START");
 
   digitalWrite(MOTOR_STBY, HIGH);
   digitalWrite(MOTOR_AIN1, LOW);
   digitalWrite(MOTOR_AIN2, HIGH);
-  analogWrite(MOTOR_PWMA, 100);
 }
 
 void loop() {
-  unsigned long ted = micros(); // cas teto smycky
+  // celkovy cas od zapnuti
+  unsigned long ted = micros();
+
+  // precteme hodnotu kazdych 10 ms
+  // velice jednoduchy zpusob jak vyresit velkou rychlost loopu
+  if (ted - cas_minuleho_cteni >= CAS_CTENI_TLACITEK)
+  {
+    cas_minuleho_cteni = ted;
+
+    // vycteni tlacitek pro ovladani rychlosti
+    // obracena logika - 0 = zmacknuto
+    bool pridat = !digitalRead(ADD_PIN);
+    bool ubrat = !digitalRead(SUB_PIN);
+
+    // je zmacknute tlacitko pro pridani a nejsme na limitu -> pridat
+    if (pridat && rychlost != UINT8_MAX)
+    {
+      rychlost++;
+    }
+    // je zmacknute tlacitko pro ubrani a nejsme na limitu -> ubrat
+    else if (ubrat && rychlost != 0)
+    {
+      rychlost--;
+    }
+
+    // zapsani rychlosti do motoru
+    analogWrite(MOTOR_PWMA, rychlost);
+  }
 
   // senzor vraci linearni napeti
   // kdyz nic neni u senzoru, vraci +- polovinu mezi 0 - 5V
@@ -120,7 +163,15 @@ void loop() {
     segment = 0;
   }
 
+  // vypocet odsazeni kvuli posunu segmentu vuci poloze hlavy motoru
   int offset_segment = (segment + OFFSET) % POCET_SEGMENTU_CYKLU;
+
+  // ledky jsou zhasnute, pokud motor nebezi
+  if (rychlost == 0)
+  {
+    offset_segment = -1;
+
+  }
 
   // vsem LED se preda nynejsi segment a podle toho se rozsviti nebo zhasnou
   modraLedka.blikKontrola(offset_segment);
