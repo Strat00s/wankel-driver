@@ -25,10 +25,10 @@
 #define LED_CERVENA_PIN 4
 #define LED_BILA_PIN 2
 
-// offset pozice motoru vuci zacaktu segmenut (v poctu segmentu)
-#define OFFSET 80
+// odsazeni pozice motoru vuci zacaktu segmenut (v poctu segmentu)
+#define VYCHOZI_ODSAZENI 20
 // prodleva cteni tlacitek v us
-#define CAS_CTENI_TLACITEK (10 * 1000)
+#define CAS_CTENI_TLACITEK (50 * 1000)
 
 
 LedRozmezi modraLedka   = LedRozmezi(LED_MODRA_PIN,   5, 70, "modra");
@@ -38,6 +38,8 @@ LedRozmezi bilaLedka    = LedRozmezi(LED_BILA_PIN,    220, 300, "bila");
 
 uint8_t rychlost = 125; // vychozi rychlost motoru (od 0 - 255)
 unsigned long cas_minuleho_cteni = 0;
+bool kalibracni_mod = false;
+int odsazeni = VYCHOZI_ODSAZENI;
 
 unsigned long cas_minule_otacky = 0;     // jak dlouho trvala posledni otacka
 unsigned long cas_minuleho_segmentu = 0; // cas kdy se preslo do minuleho segmentu
@@ -79,7 +81,7 @@ void loop() {
 
   // precteme hodnotu kazdych 10 ms
   // velice jednoduchy zpusob jak vyresit velkou rychlost loopu
-  if (ted - cas_minuleho_cteni >= CAS_CTENI_TLACITEK)
+  if (ted - cas_minuleho_cteni >= 50000)
   {
     cas_minuleho_cteni = ted;
 
@@ -88,15 +90,40 @@ void loop() {
     bool pridat = !digitalRead(ADD_PIN);
     bool ubrat = !digitalRead(SUB_PIN);
 
-    // je zmacknute tlacitko pro pridani a nejsme na limitu -> pridat
-    if (pridat && rychlost != UINT8_MAX)
+    // zmacknuti obou tlacitek -> prepnout rezim
+    if (pridat == true && ubrat == true)
     {
-      rychlost++;
+      // cekej dokud jsou tlacitka zmacknuta
+      while (!digitalRead(ADD_PIN) || !digitalRead(SUB_PIN));
+      kalibracni_mod = !kalibracni_mod;
     }
-    // je zmacknute tlacitko pro ubrani a nejsme na limitu -> ubrat
-    else if (ubrat && rychlost != 0)
+
+    // kalibracni rezim
+    if (kalibracni_mod)
     {
-      rychlost--;
+      if (pridat && odsazeni != POCET_SEGMENTU_CYKLU)
+      {
+        odsazeni++;
+      }
+      // je zmacknute tlacitko pro ubrani a nejsme na limitu -> ubrat
+      else if (ubrat && odsazeni != 0)
+      {
+        odsazeni--;
+      }
+    }
+    // rychlostni rezim
+    else
+    {
+      // je zmacknute tlacitko pro pridani a nejsme na limitu -> pridat
+      if (pridat && rychlost != UINT8_MAX)
+      {
+        rychlost++;
+      }
+      // je zmacknute tlacitko pro ubrani a nejsme na limitu -> ubrat
+      else if (ubrat && rychlost != 0)
+      {
+        rychlost--;
+      }
     }
 
     // zapsani rychlosti do motoru
@@ -164,7 +191,7 @@ void loop() {
   }
 
   // vypocet odsazeni kvuli posunu segmentu vuci poloze hlavy motoru
-  int offset_segment = (segment + OFFSET) % POCET_SEGMENTU_CYKLU;
+  int offset_segment = (segment + odsazeni) % POCET_SEGMENTU_CYKLU;
 
   // ledky jsou zhasnute, pokud motor nebezi
   if (rychlost == 0)
